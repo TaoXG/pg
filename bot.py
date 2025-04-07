@@ -38,6 +38,7 @@ def commit(new_version, version_file):
 
 
 def purge_cache(file):
+    logger.info(f'purging cache {file}')
     url = f'https://api.cloudflare.com/client/v4/zones/{zoneId}/purge_cache'
     data = {"files": [f"https://har01d.org/{file}.version", f"https://har01d.org/{file}.zip"]}
     headers = {
@@ -47,9 +48,9 @@ def purge_cache(file):
     }
     response = requests.post(url, headers=headers, data=json.dumps(data))
     if response.status_code == 200:
-        print('Success:', response.json())
+        logger.info('Purge cache success: %s', response.json())
     else:
-        print('Error:', response.status_code, response.text)
+        logger.info('Purge cache error: %d %s', response.status_code, response.text)
 
 
 def md5(path_file):

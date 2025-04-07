@@ -123,7 +123,7 @@ async def downloader(event):
                     await client.download_media(message, "zx.base.zip")
                     commit(new_version, "zx.base.version")
 
-                    subprocess.call(["zip", "-d", "zx.zip", "lib/goProxy_armV7", "lib/sing-box-armV7", "lib/tgsou-armV7", "lib/filebrowser-armV7", "lib/alist-armV7"])
+                    subprocess.call(["zip", "-d", "zx.base.zip", "lib/goProxy_armV7", "lib/sing-box-armV7", "lib/tgsou-armV7", "lib/filebrowser-armV7", "lib/alist-armV7"])
                     subprocess.call(["scp", "zx.base.zip", "zx.base.version", "root@104.160.46.225:/var/www/html"])
                     purge_cache('zx.base')
                 else:

@@ -99,7 +99,7 @@ async def downloader(event):
             await client.download_media(message, "pg.zip")
             commit(new_version, "pg.version")
 
-            subprocess.call(["scp", "pg.zip", "pg.version", "root@104.160.46.225:/var/www/html"])
+            subprocess.call(["mv", "pg.zip", "pg.version", "/var/www/html"])
             purge_cache('pg')
         else:
             # 真心20250406-增量包.zip
@@ -112,7 +112,7 @@ async def downloader(event):
                 commit(new_version, "zx.version")
 
                 #subprocess.call(["zip", "-d", "zx.zip", "lib/goProxy_armV7", "lib/goProxy_armV7.md5"])
-                subprocess.call(["scp", "zx.zip", "zx.version", "root@104.160.46.225:/var/www/html"])
+                subprocess.call(["mv", "zx.zip", "zx.version", "/var/www/html"])
                 purge_cache('zx')
             else:
                 # 真心20250402-全量包.zip
@@ -125,7 +125,7 @@ async def downloader(event):
                     commit(new_version, "zx.base.version")
 
                     #subprocess.call(["zip", "-d", "zx.base.zip", "lib/goProxy_armV7", "lib/sing-box-armV7", "lib/tgsou-armV7", "lib/filebrowser-armV7", "lib/alist-armV7"])
-                    subprocess.call(["scp", "zx.base.zip", "zx.base.version", "root@104.160.46.225:/var/www/html"])
+                    subprocess.call(["mv", "zx.base.zip", "zx.base.version", "/var/www/html"])
                     purge_cache('zx.base')
                 else:
                     logger.info(f"Ignoring file {file_name}, does not match version pattern.")

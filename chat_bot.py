@@ -40,7 +40,7 @@ async def handle_message(update: Update, context):
     if user_message == "中文文档":
         await update.message.reply_text("https://github.com/power721/alist-tvbox/blob/master/doc/README_zh.md")
     #if (len(user_message) > 4 and contains_keywords(user_message)) or channel_name is None:
-    elif len(user_message) > 4 and user_message.startswith("求助"):
+    elif len(user_message) > 4 and (user_message.startswith("求助") or user_message.startswith("请教")):
         response = Application.call(app_id=APP_ID, prompt=user_message, api_key=API_KEY)
         if response.status_code != HTTPStatus.OK:
             print(

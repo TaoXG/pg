@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+from logging.handlers import RotatingFileHandler
 import json
 import os
 import re
@@ -24,6 +25,12 @@ client = TelegramClient("bot", API_ID, API_HASH)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+handler = RotatingFileHandler(
+    'app.log',
+    maxBytes=10 * 1024 * 1024,
+    backupCount=7
+)
+logger.addHandler(handler)
 
 # Create the download folder if it doesn't exist
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)

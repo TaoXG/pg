@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=harold
 WorkingDirectory=/home/harold/workspace/pg
 ExecStart=/usr/bin/python3 /home/harold/workspace/pg/bot.py
 Restart=always
 RestartSec=5
-Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/home/harold/workspace/pg/pg.env
 
 [Install]
 WantedBy=multi-user.target

@@ -1,89 +1,135 @@
+#!/usr/bin/env python3
 import logging
 import os
-from telegram import Update
-from telegram.error import BadRequest
-from telegram.ext import Application as TelegramApplication, ChatMemberHandler, CommandHandler, MessageHandler, filters
-from http import HTTPStatus
-from dashscope import Application
 from datetime import datetime, timedelta
+from http import HTTPStatus
 
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-APP_ID = os.getenv('DASHSCOPE_APP_ID')
-API_KEY = os.getenv('DASHSCOPE_API_KEY')
+from telegram import Update, ChatPermissions
+from telegram.error import BadRequest
+from telegram.ext import (
+    Application as TelegramApplication,
+    CommandHandler,
+    MessageHandler,
+    ChatMemberHandler,
+    filters,
+    ContextTypes,
+)
+from dashscope import Application as DashscopeApp  # alias to avoid name clash
 
-keywords = ['alist', 'tvbox', '4567', '小雅', '独立版', '纯净版', '集成版', '?', '？']
+# Environment
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+APP_ID = os.getenv("DASHSCOPE_APP_ID")
+API_KEY = os.getenv("DASHSCOPE_API_KEY")
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-
-async def start(update: Update, context):
-    await update.message.reply_text('Hello! Send me a message, and I will reply.')
-
-
-def contains_keywords(message: str):
-    if 'commit' in message:
-        return False
-    return any(keyword in message.lower() for keyword in keywords)  # Convert to lowercase for case-insensitive matching
+# Basic command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Hello! Bot is alive. I will log updates for debugging.")
 
 
-async def handle_message(update: Update, context):
+# Your message handler (kept as-is, but using DashscopeApp alias)
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
     user_message = update.message.text
-    user_id = update.message.from_user.id
-    username = update.message.from_user.username
-    user_first_name = update.message.from_user.first_name
-    user_last_name = update.message.from_user.last_name if update.message.from_user.last_name else ''
-    full_name = f"{user_first_name} {user_last_name}".strip()
-    channel_name = update.message.chat.title
-    channel_id = update.message.chat.id
-
-    logger.info(f"From channel {channel_id} '{channel_name}' user {user_id} @{username} '{full_name}', received message: {user_message}")
     if user_message == "中文文档":
-        await update.message.reply_text("https://github.com/power721/alist-tvbox/blob/master/doc/README_zh.md")
-    #if (len(user_message) > 4 and contains_keywords(user_message)) or channel_name is None:
-    elif len(user_message) > 4 and (user_message.startswith("求助") or user_message.startswith("请教")):
-        response = Application.call(app_id=APP_ID, prompt=user_message, api_key=API_KEY)
+        await update.message.reply_text(
+            "https://github.com/power721/alist-tvbox/blob/master/doc/README_zh.md"
+        )
+        return
+    if len(user_message) > 4 and (user_message.startswith("求助") or user_message.startswith("请教")):
+        response = DashscopeApp.call(app_id=APP_ID, prompt=user_message, api_key=API_KEY)
         if response.status_code != HTTPStatus.OK:
-            print(
-                'request_id=%s, code=%s, message=%s\n' % (response.request_id, response.status_code, response.message))
+            logger.error("dashscope error: %s %s", response.status_code, getattr(response, "message", None))
         else:
-            print('request_id=%s\n output=%s\n usage=%s\n' % (response.request_id, response.output, response.usage))
             try:
                 await update.message.reply_markdown(response.output.text)
             except BadRequest:
                 await update.message.reply_text(response.output.text)
 
 
-async def restrict_new_member(update: Update, context):
-    chat = update.chat_member.chat
-    member = update.chat_member.new_chat_member.user
+# Handler when the message contains new_chat_members (typical, fires on someone joining)
+async def handle_new_chat_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.new_chat_members:
+        return
+    chat_id = update.effective_chat.id
+    for member in update.message.new_chat_members:
+        logger.info("Detected new_chat_member via message: %s in chat %s", member.to_dict(), chat_id)
+        # mute for 24 hours
+        until = datetime.utcnow() + timedelta(hours=2)
+        try:
+            await context.bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=member.id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until,
+            )
+            await update.effective_chat.send_message(
+                f"👋 Welcome {member.full_name}! You are muted for 2 hours."
+            )
+        except BadRequest as e:
+            logger.exception("Failed to restrict member %s: %s", member.id, e)
 
-    # Only act when the user has just joined
-    if update.chat_member.difference().get("status") == ("left", "member"):
-        until_date = datetime.now() + timedelta(hours=2)
+
+# ChatMember status change handler (fired when status fields change)
+async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # logging for debugging
+    try:
+        logger.info("ChatMember update event: %s", update.chat_member.to_dict())
+    except Exception:
+        logger.info("ChatMember update (no to_dict available)")
+    # check for a join via status change: left/kicked -> member
+    old_status = update.chat_member.old_chat_member.status
+    new_status = update.chat_member.new_chat_member.status
+    user = update.chat_member.new_chat_member.user
+    chat = update.chat_member.chat
+    logger.info("chat_member status: %s -> %s for user %s in chat %s", old_status, new_status, user.id, chat.id)
+    if old_status in ("left", "kicked") and new_status == "member":
+        until = datetime.utcnow() + timedelta(hours=2)
         try:
             await context.bot.restrict_chat_member(
                 chat_id=chat.id,
-                user_id=member.id,
-                permissions={"can_send_messages": False},  # no messages
-                until_date=until_date
+                user_id=user.id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until,
             )
-            logger.info(f"Restricted {member.id} in {chat.id} until {until_date}")
+            await context.bot.send_message(chat.id, f"👋 Welcome {user.full_name}! You are muted for 2 hours.")
         except BadRequest as e:
-            logger.error(f"Failed to restrict {member.id} in {chat.id}: {e}")
+            logger.exception("Failed to restrict via chat_member handler for user %s: %s", user.id, e)
+
+
+# Generic debug logger for messages (added last so it doesn't interfere)
+async def debug_message_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        # be careful: big dicts — logger prints compact form
+        logger.info("DEBUG UPDATE (message): %s", update.to_dict())
+    except Exception:
+        logger.info("Received update (non-serializable): %s", update)
 
 
 def main():
-    application = TelegramApplication.builder().token(BOT_TOKEN).build()
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN env var not set")
+        return
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(ChatMemberHandler(restrict_new_member, ChatMemberHandler.CHAT_MEMBER))
+    app = TelegramApplication.builder().token(BOT_TOKEN).build()
 
-    application.run_polling()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # NEW_CHAT_MEMBERS messages
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_chat_members))
+    # ChatMember status updates
+    app.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+    # Generic logger (low priority/group so it runs after others)
+    #app.add_handler(MessageHandler(filters.ALL, debug_message_logger), group=100)
 
+    # Run polling WITHOUT restricting allowed_updates (default None -> receive everything)
+    logger.info("Starting polling. Telegram lib version: %s", getattr(__import__("telegram"), "__version__", "unknown"))
+    app.run_polling()  # if you use webhook, ensure allowed_updates includes ["message","chat_member"]
 
-if __name__ == '__main__':
-    import asyncio
-
-    asyncio.run(main())
+if __name__ == "__main__":
+    main()

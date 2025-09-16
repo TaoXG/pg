@@ -2,9 +2,10 @@ import logging
 import os
 from telegram import Update
 from telegram.error import BadRequest
-from telegram.ext import Application as TelegramApplication, CommandHandler, MessageHandler, filters
+from telegram.ext import Application as TelegramApplication, ChatMemberHandler, CommandHandler, MessageHandler, filters
 from http import HTTPStatus
 from dashscope import Application
+from datetime import datetime, timedelta
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 APP_ID = os.getenv('DASHSCOPE_APP_ID')
@@ -53,11 +54,31 @@ async def handle_message(update: Update, context):
                 await update.message.reply_text(response.output.text)
 
 
+async def restrict_new_member(update: Update, context):
+    chat = update.chat_member.chat
+    member = update.chat_member.new_chat_member.user
+
+    # Only act when the user has just joined
+    if update.chat_member.difference().get("status") == ("left", "member"):
+        until_date = datetime.now() + timedelta(hours=2)
+        try:
+            await context.bot.restrict_chat_member(
+                chat_id=chat.id,
+                user_id=member.id,
+                permissions={"can_send_messages": False},  # no messages
+                until_date=until_date
+            )
+            logger.info(f"Restricted {member.id} in {chat.id} until {until_date}")
+        except BadRequest as e:
+            logger.error(f"Failed to restrict {member.id} in {chat.id}: {e}")
+
+
 def main():
     application = TelegramApplication.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(ChatMemberHandler(restrict_new_member, ChatMemberHandler.CHAT_MEMBER))
 
     application.run_polling()
 

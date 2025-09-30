@@ -79,14 +79,14 @@ async def allow(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
-    user_message = update.message.text
-    if user_message == "中文文档":
+    text = update.message.text
+    if text == "中文文档":
         await update.message.reply_text(
             "https://github.com/power721/alist-tvbox/blob/master/doc/README_zh.md"
         )
         return
-    if len(user_message) > 4 and (user_message.startswith("求助") or user_message.startswith("请教")):
-        response = DashscopeApp.call(app_id=APP_ID, prompt=user_message, api_key=API_KEY)
+    if len(text) > 4 and (text.startswith("求助") or text.startswith("请教") or "@alist_tvbox_bot" in text):
+        response = DashscopeApp.call(app_id=APP_ID, prompt=text, api_key=API_KEY)
         if response.status_code != HTTPStatus.OK:
             logger.error("dashscope error: %s %s", response.status_code, getattr(response, "message", None))
         else:

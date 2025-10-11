@@ -1,1 +1,1 @@
-Please create pull request for new pg.zip.
+Download ZX file from https://github.com/power721/ZX/releases

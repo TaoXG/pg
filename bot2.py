@@ -19,7 +19,7 @@ TOKEN = os.getenv("GITHUB_TOKEN")
 MAX_FILE_SIZE = 200 * 1024 * 1024  # Max file size 200MB
 DOWNLOAD_FOLDER = 'downloads'
 
-channels = [2046444460, 2188783347, 1890409212]
+channels = [2046444460, 2188783347, 1890409212, 1734222246]
 # Initialize the TelegramClient
 client = TelegramClient("bot", API_ID, API_HASH)
 
@@ -117,7 +117,7 @@ async def downloader(event):
 
         else:
             # 真心20250406-增量包.zip
-            match = re.match(r'真心(\d{8})-?(\d)?-增量包.zip', file_name)
+            match = re.match(r'真心(\d{8})-?(\d)?-?增量包.zip', file_name)
             if match:
                 new_version = datetime.now().strftime("%Y%m%d-%H%M")
                 logger.info(f"New version: {new_version}")

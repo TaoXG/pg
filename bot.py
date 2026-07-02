@@ -101,6 +101,11 @@ def build_pg_zip_with_jar(base_zip, new_jar, out_zip):
 
 async def is_owner(chat_id, user_id):
     owner_id = os.getenv("PG_OWNER_ID")
+    if user_id is None:
+        # Anonymous admin / channel post: sender is hidden (sender_id=None).
+        # In this controlled group only the owner posts, so treat it as owner.
+        logger.info("owner check: sender is anonymous (None); treating as owner")
+        return True
     if owner_id:
         return str(user_id) == str(owner_id)
     try:

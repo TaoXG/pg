@@ -25,7 +25,11 @@ DOWNLOAD_FOLDER = 'downloads'
 channels = [2046444460, 2188783347, 1890409212, 1734222246]
 PG_JAR_GROUP = 1943841872
 VERSION_FILE = 'pg.version'
-JAR_NAME = 'pg.jar'
+# monitored files in PG_JAR_GROUP: {downloaded filename: path inside the pg zip}
+PACKAGE_FILES = {
+    'pg.jar': 'pg.jar',
+    'aliproxy.tar.xz': 'lib/aliproxy.tar.xz',
+}
 # Initialize the TelegramClient
 client = TelegramClient("bot", API_ID, API_HASH)
 
@@ -72,31 +76,37 @@ def save_latest(zip_path, new_version):
             logger.info(f"removed old base zip: {old_zip}")
 
 
-def build_pg_zip_with_jar(base_zip, new_jar, out_zip):
-    """Rebuild base_zip into out_zip, replacing pg.jar (and pg.jar.md5)."""
-    with open(new_jar, "rb") as f:
-        jar_bytes = f.read()
-    jar_md5 = hashlib.md5(jar_bytes).hexdigest()
+def build_pg_zip(base_zip, out_zip, files):
+    """Rebuild base_zip into out_zip, injecting/replacing the given files.
 
-    replaced_jar = False
-    replaced_md5 = False
+    files: list of (entry_name, local_path) — entry_name is the exact path
+    inside the zip (e.g. 'pg.jar', 'lib/aliproxy.tar.xz'). A '<entry>.md5'
+    sidecar is refreshed only if one already exists in the base zip.
+    """
+    payloads = {}
+    for entry, local in files:
+        with open(local, "rb") as f:
+            payloads[entry] = f.read()
+
+    with zipfile.ZipFile(base_zip, "r") as zin:
+        base_names = set(zin.namelist())
+    sidecars = {e + ".md5" for e in payloads if e + ".md5" in base_names}
+
+    replaced = set()
     with zipfile.ZipFile(base_zip, "r") as zin, zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
-            base = os.path.basename(item.filename)
-            if base == "pg.jar":
-                zout.writestr(item, jar_bytes)
-                replaced_jar = True
-            elif base == "pg.jar.md5":
-                zout.writestr(item, jar_md5)
-                replaced_md5 = True
+            if item.filename in payloads:
+                zout.writestr(item, payloads[item.filename])
+                replaced.add(item.filename)
+            elif item.filename in sidecars:
+                zout.writestr(item, hashlib.md5(payloads[item.filename[:-4]]).hexdigest())
             else:
                 zout.writestr(item, zin.read(item.filename))
-        if not replaced_jar:
-            zout.writestr("pg.jar", jar_bytes)
-            logger.info("pg.jar entry not found in base zip; added at root")
-        if not replaced_md5:
-            zout.writestr("pg.jar.md5", jar_md5)
-    logger.info(f"built {out_zip} (pg.jar replaced, md5={jar_md5})")
+        for entry in payloads:
+            if entry not in replaced:
+                zout.writestr(entry, payloads[entry])
+                logger.info(f"{entry} not found in base zip; added")
+    logger.info(f"built {out_zip} with {list(payloads)}")
 
 
 async def is_owner(chat_id, user_id):
@@ -225,43 +235,44 @@ async def downloader(event):
 
 
 @client.on(events.NewMessage(chats=[PG_JAR_GROUP]))
-async def jar_updater(event):
+async def package_updater(event):
     message = event.message
     if not message.document:
         return
-    name = message.file.name or ""
-    if os.path.basename(name).lower() != JAR_NAME:
+    name = os.path.basename(message.file.name or "").lower()
+    entry = PACKAGE_FILES.get(name)
+    if entry is None:
         return
     if not await is_owner(event.chat_id, event.sender_id):
-        logger.info(f"Ignoring {JAR_NAME} from non-owner {event.sender_id}")
+        logger.info(f"Ignoring {name} from non-owner {event.sender_id}")
         return
 
-    logger.info(f"Received {JAR_NAME} from owner {event.sender_id} in {event.chat_id}")
+    logger.info(f"Received {name} from owner {event.sender_id} in {event.chat_id}")
 
-    await client.download_media(message, JAR_NAME)
+    await client.download_media(message, name)
 
     base_version = read_version()
     base_zip = f"pg.{base_version}.zip"
     if not base_version or not os.path.exists(base_zip):
-        logger.error(f"Base zip not found: {base_zip}; skipping {JAR_NAME}")
-        if os.path.exists(JAR_NAME):
-            os.remove(JAR_NAME)
+        logger.error(f"Base zip not found: {base_zip}; skipping {name}")
+        if os.path.exists(name):
+            os.remove(name)
         return
 
     new_version = datetime.now().strftime("%Y%m%d-%H%M")
     if new_version == base_version:
         logger.info(f"Same-minute collision with base version {new_version}; skipping")
-        os.remove(JAR_NAME)
+        os.remove(name)
         return
 
     out_zip = f"pg.{new_version}.zip"
-    build_pg_zip_with_jar(base_zip, JAR_NAME, out_zip)
+    build_pg_zip(base_zip, out_zip, [(entry, name)])
 
     body = (message.message or "").strip() or new_version
     release(out_zip, new_version, "PG", body=body)
     save_latest(out_zip, new_version)
 
-    os.remove(JAR_NAME)
+    os.remove(name)
 
 
 # Run the bot
@@ -269,3 +280,4 @@ if __name__ == '__main__':
     logger.info("Bot is running...")
     client.start()
     client.run_until_disconnected()
+

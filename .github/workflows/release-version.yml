@@ -1,7 +1,6 @@
 name: Push Version To Server
 
 on:
-  workflow_dispatch:
   release:
     types: [published]
 
